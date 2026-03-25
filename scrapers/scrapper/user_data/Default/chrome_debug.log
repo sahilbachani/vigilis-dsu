@@ -1,0 +1,9 @@
+[0227/213402.818:INFO:CONSOLE:333] "Permissions policy violation: unload is not allowed in this document.", source: https://static.xx.fbcdn.net/rsrc.php/v4/yW/r/GM18YDVyxsM.js (333)
+[0227/213404.318:INFO:CONSOLE:253] "
+%cStop! font-family:helvetica; font-size:20px; font-size:50px; font-weight:bold; color:red; -webkit-text-stroke:1px black;", source: https://static.xx.fbcdn.net/rsrc.php/v4/yy/r/5I95ET0IFKo.js (253)
+[0227/213404.318:INFO:CONSOLE:253] "
+%cThis is a browser feature intended for developers. If someone told you to copy and paste something here to enable a Facebook feature or "hack" someone's account, it is a scam and will give them access to your Facebook account. font-family:helvetica; font-size:20px; ", source: https://static.xx.fbcdn.net/rsrc.php/v4/yy/r/5I95ET0IFKo.js (253)
+[0227/213404.318:INFO:CONSOLE:253] "
+%cSee https://www.facebook.com/selfxss for more information. font-family:helvetica; font-size:20px; ", source: https://static.xx.fbcdn.net/rsrc.php/v4/yy/r/5I95ET0IFKo.js (253)
+[0227/213404.318:INFO:CONSOLE:253] "
+%c ", source: https://static.xx.fbcdn.net/rsrc.php/v4/yy/r/5I95ET0IFKo.js (253)
