@@ -1,16 +1,8 @@
-import os
 from fastapi import FastAPI
-from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import auth, post, video, scraper
+from app.api import auth, post, video, dashboard, scraper, sources, alerts, tasks
 
 app = FastAPI()
-
-# Serve downloaded media
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-MEDIA_DIR = os.path.join(BASE_DIR, "media")
-os.makedirs(MEDIA_DIR, exist_ok=True)
-app.mount("/media", StaticFiles(directory=MEDIA_DIR), name="media")
 
 # Allow CORS for your frontend
 origins = [
@@ -32,3 +24,7 @@ app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(post.router, prefix="/api/post", tags=["post"])
 app.include_router(video.router, prefix="/api/video", tags=["video"])
 app.include_router(scraper.router, prefix="/api/scraper", tags=["scraper"])
+app.include_router(sources.router, prefix="/api/sources", tags=["sources"])
+app.include_router(tasks.router, prefix="/api/tasks", tags=["tasks"])
+app.include_router(alerts.router, prefix="/api/alerts", tags=["alerts"])
+app.include_router(dashboard.router, prefix="/api/dashboard", tags=["dashboard"])

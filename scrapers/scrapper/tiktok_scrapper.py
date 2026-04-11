@@ -64,7 +64,7 @@ async def run_tiktok_scraper():
         print("Launching browser with persistent context...")
         context = await p.chromium.launch_persistent_context(
             USER_DATA_DIR,
-            headless=True,
+            headless=False,
             args=[
                 "--disable-blink-features=AutomationControlled", 
                 "--start-maximized",
@@ -108,100 +108,136 @@ async def run_tiktok_scraper():
         scroll_attempts = 0
 
         while total_extracted < POSTS_LIMIT and scroll_attempts < 10:
-            # TikTok Explorer uses slightly varying classes, but generally a items grid or feed container.
-            # a tags containing '/video/' are the actual post links
-            video_links = await page.query_selector_all('a[href*="/video/"]')
+            scroll_attempts += 1
+            print(f"\n[SCRAPE] Scroll attempt {scroll_attempts}/10")
             
-            batch_data = []
-
-            for link in video_links:
-                if total_extracted + len(batch_data) >= POSTS_LIMIT:
+            try:
+                # Check if page is still valid
+                if page.is_closed():
+                    print("[ERROR] Page was closed!")
                     break
                 
+                # TikTok Explorer uses slightly varying classes, but generally a items grid or feed container.
+                # a tags containing '/video/' are the actual post links
                 try:
-                    post_url = await link.get_attribute("href")
-                    if not post_url or post_url in posts_seen:
-                        continue
-                        
-                    if post_url.startswith('/'):
-                        post_url = f"https://www.tiktok.com{post_url}"
+                    video_links = await page.query_selector_all('a[href*="/video/"]')
+                except Exception as e:
+                    print(f"[WARN] Could not find video links: {e}")
+                    video_links = []
+                
+                if not video_links:
+                    print("[WARN] No video links found, scrolling...")
+                    await page.mouse.wheel(0, 3000)
+                    await page.wait_for_timeout(3000)
+                    continue
+                
+                print(f"[SCRAPE] Found {len(video_links)} video links")
+                batch_data = []
 
-                    posts_seen.add(post_url)
+                for link_idx, link in enumerate(video_links):
+                    if total_extracted + len(batch_data) >= POSTS_LIMIT:
+                        break
                     
-                    # Extract Author from URL (e.g. https://www.tiktok.com/@username/video/1234)
-                    author = "Unknown"
-                    parsed = urlparse(post_url)
-                    path_parts = parsed.path.split('/')
-                    if len(path_parts) > 2 and path_parts[1].startswith('@'):
-                        author = path_parts[1].replace('@', '')
-
-                    # For description, climb DOM tree and hunt for title
-                    # TikTok explores page typically uses div title props or image alts
-                    content = "[TikTok Video/No Caption]"
                     try:
-                        # Try finding image inside link to get alt text
-                        img = await link.query_selector('img')
-                        if img:
-                            alt_text = await img.get_attribute('alt')
-                            if alt_text:
-                                content = alt_text
-                    except Exception:
-                        pass
+                        post_url = await link.get_attribute("href")
+                        if not post_url or post_url in posts_seen:
+                            continue
+                            
+                        if post_url.startswith('/'):
+                            post_url = f"https://www.tiktok.com{post_url}"
 
-                    timestamp = datetime.datetime.utcnow().isoformat()
-                    
-                    media_items = []
-                    
-                    # Offload directly to yt-dlp to bypass DOM complexities
-                    print(f"[TikTok] Handing {post_url} to yt-dlp...")
-                    video_local_path = download_video(post_url, "tiktok", cookie_file_path)
-                    
-                    if video_local_path:
-                        media_items.append({
-                            "type": "video",
+                        posts_seen.add(post_url)
+                        
+                        # Extract Author from URL (e.g. https://www.tiktok.com/@username/video/1234)
+                        author = "Unknown"
+                        parsed = urlparse(post_url)
+                        path_parts = parsed.path.split('/')
+                        if len(path_parts) > 2 and path_parts[1].startswith('@'):
+                            author = path_parts[1].replace('@', '')
+
+                        # For description, climb DOM tree and hunt for title
+                        # TikTok explores page typically uses div title props or image alts
+                        content = "[TikTok Video/No Caption]"
+                        try:
+                            # Try finding image inside link to get alt text
+                            img = await link.query_selector('img')
+                            if img:
+                                alt_text = await img.get_attribute('alt')
+                                if alt_text:
+                                    content = alt_text
+                        except Exception:
+                            pass
+
+                        timestamp = datetime.datetime.utcnow().isoformat()
+                        
+                        media_items = []
+                        
+                        # Offload directly to yt-dlp to bypass DOM complexities
+                        print(f"  [TikTok] Downloading: {post_url}")
+                        video_local_path = download_video(post_url, "tiktok", cookie_file_path)
+                        
+                        if video_local_path:
+                            media_items.append({
+                                "type": "video",
+                                "url": post_url,
+                                "local_path": video_local_path
+                            })
+
+                        batch_data.append({
+                            "author": author,
+                            "content": content,
+                            "timestamp": timestamp,
                             "url": post_url,
-                            "local_path": video_local_path
+                            "media_items": media_items
                         })
 
-                    batch_data.append({
-                        "author": author,
-                        "content": content,
-                        "timestamp": timestamp,
-                        "url": post_url,
-                        "media_items": media_items
-                    })
+                    except Exception as e:
+                        print(f"  [ERROR] Error extracting video {link_idx}: {e}")
+                        continue
 
-                except Exception as e:
-                    print(f"Error extracting tiktok post: {e}")
+                if batch_data:
+                    saved = 0
+                    for p in batch_data:
+                        try:
+                            post_id = save_post_to_db(
+                                db=db,
+                                source_id=source_id,
+                                author=p["author"],
+                                text_content=p["content"],
+                                timestamp=p["timestamp"],
+                                url=p.get("url"),
+                                confidence_score=None,
+                                category="tiktok"
+                            )
+                            if post_id:
+                                saved += 1
+                                print(f"  [SAVED] Post {total_extracted + saved}/{POSTS_LIMIT}")
+                        except Exception as e:
+                            print(f"  [ERROR] Failed to save post: {e}")
+                    
+                    total_extracted += saved
+                    print(f"[SCRAPE] Batch complete: {saved}/{len(batch_data)} saved")
 
-            if batch_data:
-                saved = 0
-                for p in batch_data:
-                    post_id = save_post_to_db(
-                        db=db,
-                        source_id=source_id,
-                        author=p["author"],
-                        text_content=p["content"],
-                        timestamp=p["timestamp"],
-                        url=p.get("url"),
-                        confidence_score=None,
-                        category="tiktok",
-                        media_items=p.get("media_items", [])
-                    )
-                    if post_id:
-                        saved += 1
-                
-                total_extracted += saved
-                print(f"--> Extracted batch of {len(batch_data)} TikTok videos. Success: {saved}")
-
-            # Scroll down to load more
-            print("Scrolling to load more TikToks...")
-            await page.mouse.wheel(0, 3000)
-            await page.wait_for_timeout(3000)
-            scroll_attempts += 1
+                # Scroll down to load more
+                if total_extracted < POSTS_LIMIT:
+                    print("[SCROLL] Scrolling down...")
+                    try:
+                        await page.mouse.wheel(0, 3000)
+                        await page.wait_for_timeout(3000)
+                    except Exception as e:
+                        print(f"[ERROR] Scroll failed: {e}")
+                        break
+            
+            except Exception as e:
+                print(f"[ERROR] Iteration {scroll_attempts} failed: {e}")
+                await page.wait_for_timeout(1000)
+                continue
 
         print(f"Finished TikTok scrape. Total unique posts saved: {total_extracted}")
         await context.close()
+        
+        # Close database session to ensure all commits are flushed
+        db.close()
 
 if __name__ == "__main__":
     asyncio.run(run_tiktok_scraper())

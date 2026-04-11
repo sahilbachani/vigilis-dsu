@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+venv/
+*.egg-info/
+__pycache__/
+.pytest_cache/
+.venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Environment variables
+.env
+.env.local
+.env.*.local
+
+# Build outputs
+dist/
+build/
+*.pyc
+*.pyo
+*.pyd
+.Python
+
+# Database
+*.db
+*.sqlite
+*.sqlite3
+
+# Browser data
+scrapers/scrapper/user_data/
+firefox_profile/
+
+# Temporary files
+*.tmp
+*.log
+.cache/
+
+# OS
+Thumbs.db
+.DS_Store

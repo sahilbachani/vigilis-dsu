@@ -4,15 +4,37 @@ import datetime
 from playwright.async_api import async_playwright
 from playwright_stealth import Stealth
 import os
-from dotenv import load_dotenv
-from database import get_db_session, get_or_create_source, save_post_to_db
-from media_downloader import download_media
-from video_downloader import download_video
+import sys
+from pathlib import Path
 
-load_dotenv()
+from database import get_db_session, get_or_create_source, save_post_to_db
+
+# Add ai_pipeline to path for AI analysis
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+
+# Import AI pipeline (may be None if not available) - lazy load to avoid issues
+AI_PIPELINE_AVAILABLE = False
+AIAnalysisPipeline = None
+
+def load_ai_pipeline():
+    """Lazy load AI pipeline only when needed"""
+    global AI_PIPELINE_AVAILABLE, AIAnalysisPipeline
+    if AI_PIPELINE_AVAILABLE or AIAnalysisPipeline:
+        return AIAnalysisPipeline
+    
+    try:
+        from ai_pipeline.integration import AIAnalysisPipeline as Pipeline
+        AIAnalysisPipeline = Pipeline
+        AI_PIPELINE_AVAILABLE = True
+        return AIAnalysisPipeline
+    except Exception as e:
+        print(f"⚠️ Warning: AI Pipeline not available ({e})")
+        print("   Posts will be saved without analysis")
+        AI_PIPELINE_AVAILABLE = False
+        return None
 
 # --- CONFIGURATION ---
-HEADLESS_MODE = os.getenv("HEADLESS", "false").lower() == "true"
+HEADLESS_MODE = False
 USER_DATA_DIR = "./user_data"
 TARGET_URL = "https://x.com/home"
 
@@ -22,10 +44,13 @@ TWITTER_SOURCE_NAME = "X Feed"
 TWITTER_URL = "https://x.com/home"
 
 
-def save_posts_to_db(tweets):
+def save_posts_to_db(tweets, ai_pipeline=None):
     """
-    Save scraped tweets to the database
-    Does NOT modify login/logout functionality
+    Save scraped tweets to the database with AI analysis
+    
+    Args:
+        tweets: List of tweet dicts with keys: author, handle, content, timestamp
+        ai_pipeline: Optional AIAnalysisPipeline instance for real-time analysis
     """
     if not tweets:
         return
@@ -41,26 +66,79 @@ def save_posts_to_db(tweets):
         )
 
         saved_count = 0
+        analyzed_count = 0
+        flagged_count = 0
+        
         for t in tweets:
             try:
-                post_id = save_post_to_db(
-                    db,
-                    source_id=source_id,
-                    author=t["author"],
-                    text_content=t["content"],
-                    timestamp=t["timestamp"],
-                    url=t.get("url"),  # Now saves the actual extracted URL
-                    confidence_score=None,
-                    category="twitter",
-                    media_items=t.get("media_items", [])
-                )
-                if post_id:
-                    saved_count += 1
+                # Perform AI analysis if pipeline available
+                if ai_pipeline:
+                    try:
+                        analysis_result = ai_pipeline.analyzer.analyze_text(t["content"])
+                        analyzed_count += 1
+                        
+                        if analysis_result.flagged:
+                            flagged_count += 1
+                            print(f"\n🚩 FLAGGED POST by {t['author']}")
+                            print(f"   Hate Score: {analysis_result.hate_score:.2f}")
+                            print(f"   Extremism Score: {analysis_result.extremism_score:.2f}")
+                            print(f"   Misinformation Score: {analysis_result.misinformation_score:.2f}")
+                            print(f"   Confidence: {analysis_result.confidence_score:.2f}")
+                        
+                        # Save with analysis results
+                        post_id = ai_pipeline.db_ops.save_analyzed_post(
+                            db=db,
+                            source_id=source_id,
+                            author=t["author"],
+                            text_content=t["content"],
+                            timestamp=datetime.datetime.fromisoformat(t["timestamp"]),
+                            analysis_result=analysis_result,
+                            url=None,
+                            category="twitter"
+                        )
+                        
+                        if post_id:
+                            saved_count += 1
+                            
+                    except Exception as ai_error:
+                        print(f"⚠️ AI Analysis failed for {t['author']}: {ai_error}")
+                        # Fall back to saving without analysis
+                        post_id = save_post_to_db(
+                            db,
+                            source_id=source_id,
+                            author=t["author"],
+                            text_content=t["content"],
+                            timestamp=t["timestamp"],
+                            url=None,
+                            confidence_score=None,
+                            category="twitter"
+                        )
+                        if post_id:
+                            saved_count += 1
+                else:
+                    # No AI pipeline - save without analysis
+                    post_id = save_post_to_db(
+                        db,
+                        source_id=source_id,
+                        author=t["author"],
+                        text_content=t["content"],
+                        timestamp=t["timestamp"],
+                        url=None,
+                        confidence_score=None,
+                        category="twitter"
+                    )
+                    if post_id:
+                        saved_count += 1
+                    
             except Exception as e:
                 print(f"Error saving post from {t['author']}: {e}")
                 continue
         
-        print(f"--> Successfully saved {saved_count} posts to database")
+        print(f"\n--- Processing Summary ---")
+        print(f"Saved: {saved_count} posts")
+        if ai_pipeline:
+            print(f"Analyzed: {analyzed_count} posts")
+            print(f"Flagged: {flagged_count} posts")
     
     except Exception as e:
         print(f"Database error: {e}")
@@ -70,6 +148,24 @@ def save_posts_to_db(tweets):
 
 
 async def scrape_feed():
+    # Initialize AI Pipeline if available
+    ai_pipeline = None
+    AIAnalysisPipeline_class = load_ai_pipeline()
+    
+    if AIAnalysisPipeline_class:
+        try:
+            print("=" * 60)
+            print("Initializing AI Pipeline...")
+            print("=" * 60)
+            from ai_pipeline.models_loader import ModelsLoader
+            models_loader = ModelsLoader()
+            ai_pipeline = AIAnalysisPipeline_class(models_loader)
+            print("✓ AI Pipeline initialized for real-time analysis\n")
+        except Exception as e:
+            print(f"⚠️ Failed to initialize AI Pipeline: {e}")
+            print("   Continuing without real-time analysis...\n")
+            ai_pipeline = None
+    
     lockfile_path = os.path.join(USER_DATA_DIR, "lockfile")
     if os.path.exists(lockfile_path):
         try:
@@ -79,28 +175,26 @@ async def scrape_feed():
             print("Could not remove lockfile.")
 
     async with async_playwright() as p:
-        # Use a more recent User Agent
         user_agent = (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/131.0.0.0 Safari/537.36"
+            "Chrome/120.0.0.0 Safari/537.36"
         )
 
         print("Launching browser with persistent context...")
         context = await p.chromium.launch_persistent_context(
             USER_DATA_DIR,
             headless=HEADLESS_MODE,
-            args=[
-                "--disable-blink-features=AutomationControlled", 
-                "--start-maximized",
-                "--no-sandbox",
-                "--disable-infobars"
-            ],
+            args=["--disable-blink-features=AutomationControlled", "--start-maximized"],
             user_agent=user_agent,
             viewport=None
         )
 
-        # Removed manual webdriver override as playwright-stealth handles it better
+        await context.add_init_script("""
+            Object.defineProperty(navigator, 'webdriver', {
+                get: () => undefined
+            });
+        """)
 
         page = context.pages[0] if context.pages else await context.new_page()
 
@@ -132,23 +226,6 @@ async def scrape_feed():
             await context.close()
             return
 
-        # Export Cookies for yt-dlp to bypass video download blocking
-        cookies = await context.cookies()
-        cookie_lines = ["# Netscape HTTP Cookie File\n"]
-        for c in cookies:
-            domain = c.get('domain', '')
-            include_subdomains = 'TRUE' if domain.startswith('.') else 'FALSE'
-            path = c.get('path', '/')
-            secure = 'TRUE' if c.get('secure', False) else 'FALSE'
-            expires = str(int(c.get('expires', 0))) if c.get('expires', -1) > 0 else '0'
-            name = c.get('name', '')
-            value = c.get('value', '')
-            cookie_lines.append(f"{domain}\t{include_subdomains}\t{path}\t{secure}\t{expires}\t{name}\t{value}")
-        
-        cookie_file_path = "twitter_cookies.txt"
-        with open(cookie_file_path, "w", encoding="utf-8") as f:
-            f.write("\n".join(cookie_lines))
-
         print("Starting active scrape loop...")
         tweets_seen = set()
 
@@ -178,7 +255,6 @@ async def scrape_feed():
                         if time_elem else datetime.datetime.utcnow().isoformat()
                     )
 
-                    # Extract Content
                     content_elem = await tweet.query_selector(
                         'div[data-testid="tweetText"]'
                     )
@@ -186,45 +262,6 @@ async def scrape_feed():
                         await content_elem.inner_text()
                         if content_elem else "[Media/No Text]"
                     )
-
-                    # Extract URL
-                    post_url = None
-                    if time_elem:
-                        # Time element parent holds the permalink
-                        permalink_elem = await time_elem.evaluate_handle('el => el.parentElement')
-                        if permalink_elem:
-                            href = await permalink_elem.get_attribute('href')
-                            if href:
-                                post_url = f"https://x.com{href}"
-
-                    # Extract Media (Images for now)
-                    media_items = []
-                    img_elems = await tweet.query_selector_all('img[src*="pbs.twimg.com/media"]')
-                    for img in img_elems:
-                        src = await img.get_attribute("src")
-                        if src:
-                            # Clean up Twitter image URLs (they often end with ?format=jpg&name=...) 
-                            # We can just download the raw URL
-                            local_path = download_media(src, "twitter", "image")
-                            if local_path:
-                                media_items.append({
-                                    "type": "image",
-                                    "url": src,
-                                    "local_path": local_path
-                                })
-                                
-                    # Extract Video 
-                    # If this tweet has a video player, feed the post_url to yt-dlp
-                    has_video = await tweet.query_selector('video') or await tweet.query_selector('div[data-testid="videoPlayer"]')
-                    if has_video and post_url:
-                        video_local_path = download_video(post_url, "twitter", cookie_file_path)
-                        if video_local_path:
-                            # It's better to store the permalink as the media URL since blob streams expire anyway
-                            media_items.append({
-                                "type": "video",
-                                "url": post_url,
-                                "local_path": video_local_path
-                            })
 
                     unique_sig = f"{handle}-{timestamp}"
 
@@ -234,17 +271,15 @@ async def scrape_feed():
                             "author": author,
                             "handle": handle,
                             "content": content,
-                            "timestamp": timestamp,
-                            "url": post_url,
-                            "media_items": media_items
+                            "timestamp": timestamp
                         })
 
-                except Exception as e:
-                    print(f"Error parsing tweet: {e}")
+                except:
                     continue
 
             if batch_data:
-                save_posts_to_db(batch_data)
+                # Pass AI pipeline to save_posts_to_db
+                save_posts_to_db(batch_data, ai_pipeline)
 
             await page.mouse.wheel(0, 1000)
             wait_time = random.uniform(2000, 5000)

@@ -1,219 +1,208 @@
 import { useState } from "react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
-import { Globe, Loader2 } from "lucide-react";
-import axios from "axios";
-import { useToast } from "@/hooks/use-toast";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { AlertCircle, CheckCircle2, Zap, Globe, MessageSquare, Facebook } from "lucide-react";
 
 interface ScrapeModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
-const PLATFORMS = [
+interface ScraperOption {
+  id: string;
+  name: string;
+  description: string;
+  icon: React.ComponentType<{ className?: string }>;
+  status: "ready" | "running" | "coming-soon";
+  command: string;
+}
+
+const scrapers: ScraperOption[] = [
   {
-    id: "twitter",
-    name: "Twitter (X)",
-    description: "Scrape posts from X/Twitter feed",
-    icon: (
-      <span className="inline-flex items-center justify-center h-10 w-10 bg-black dark:bg-white text-white dark:text-black rounded-xl text-xl font-bold">
-        𝕏
-      </span>
-    ),
-    color: "border-neutral-300 dark:border-neutral-600",
-    activeColor: "border-black dark:border-white bg-neutral-50 dark:bg-neutral-900",
+    id: "x",
+    name: "X/Twitter",
+    description: "Scrape posts from X/Twitter timeline",
+    icon: MessageSquare,
+    status: "ready",
+    command: "python run_scraper.py x",
+  },
+  {
+    id: "tiktok",
+    name: "TikTok",
+    description: "Scrape videos from TikTok explore page",
+    icon: Zap,
+    status: "ready",
+    command: "python run_scraper.py tiktok",
   },
   {
     id: "facebook",
     name: "Facebook",
     description: "Scrape posts from Facebook feed",
-    icon: (
-      <span className="inline-flex items-center justify-center h-10 w-10 bg-blue-600 text-white rounded-xl text-xl font-bold">
-        f
-      </span>
-    ),
-    color: "border-blue-200 dark:border-blue-800",
-    activeColor: "border-blue-500 dark:border-blue-400 bg-blue-50 dark:bg-blue-950",
+    icon: Facebook,
+    status: "ready",
+    command: "python run_scraper.py facebook",
   },
   {
-    id: "tiktok",
-    name: "TikTok",
-    description: "Scrape videos from TikTok explore feed",
-    icon: (
-      <span className="inline-flex items-center justify-center h-10 w-10 bg-black dark:bg-white text-white dark:text-black rounded-xl text-xl font-bold">
-        ♪
-      </span>
-    ),
-    color: "border-fuchsia-200 dark:border-fuchsia-800",
-    activeColor: "border-fuchsia-500 dark:border-fuchsia-400 bg-fuchsia-50 dark:bg-fuchsia-950",
-  },
-  {
-    id: "website-dawn",
-    name: "Dawn News",
-    description: "Scrape articles from Dawn News",
-    icon: (
-      <span className="inline-flex items-center justify-center h-10 w-10 bg-emerald-600 text-white rounded-xl text-lg">
-        <Globe className="h-5 w-5" />
-      </span>
-    ),
-    color: "border-emerald-200 dark:border-emerald-800",
-    activeColor: "border-emerald-500 dark:border-emerald-400 bg-emerald-50 dark:bg-emerald-950",
-  },
-  {
-    id: "website-toi",
-    name: "Times of India",
-    description: "Scrape articles from Times of India",
-    icon: (
-      <span className="inline-flex items-center justify-center h-10 w-10 bg-emerald-600 text-white rounded-xl text-lg">
-        <Globe className="h-5 w-5" />
-      </span>
-    ),
-    color: "border-emerald-200 dark:border-emerald-800",
-    activeColor: "border-emerald-500 dark:border-emerald-400 bg-emerald-50 dark:bg-emerald-950",
-  },
-  {
-    id: "website-jihadintel",
-    name: "Jihad Intel",
-    description: "Scrape articles from Jihad Intel",
-    icon: (
-      <span className="inline-flex items-center justify-center h-10 w-10 bg-emerald-600 text-white rounded-xl text-lg">
-        <Globe className="h-5 w-5" />
-      </span>
-    ),
-    color: "border-emerald-200 dark:border-emerald-800",
-    activeColor: "border-emerald-500 dark:border-emerald-400 bg-emerald-50 dark:bg-emerald-950",
-  },
-  {
-    id: "website-khorasandiary",
-    name: "The Khorasan Diary",
-    description: "Scrape articles from The Khorasan Diary",
-    icon: (
-      <span className="inline-flex items-center justify-center h-10 w-10 bg-emerald-600 text-white rounded-xl text-lg">
-        <Globe className="h-5 w-5" />
-      </span>
-    ),
-    color: "border-emerald-200 dark:border-emerald-800",
-    activeColor: "border-emerald-500 dark:border-emerald-400 bg-emerald-50 dark:bg-emerald-950",
+    id: "web",
+    name: "Websites/Blogs",
+    description: "Scrape news from Pakistani news sites",
+    icon: Globe,
+    status: "ready",
+    command: "python run_scraper.py web",
   },
 ];
 
+function getStatusColor(status: string): string {
+  switch (status) {
+    case "ready":
+      return "bg-green-100 dark:bg-green-950 text-green-800 dark:text-green-200";
+    case "running":
+      return "bg-blue-100 dark:bg-blue-950 text-blue-800 dark:text-blue-200";
+    case "coming-soon":
+      return "bg-gray-100 dark:bg-gray-950 text-gray-800 dark:text-gray-200";
+    default:
+      return "bg-gray-100 dark:bg-gray-950";
+  }
+}
+
+function getStatusIcon(status: string) {
+  switch (status) {
+    case "ready":
+      return <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400" />;
+    case "coming-soon":
+      return <AlertCircle className="h-4 w-4 text-gray-600 dark:text-gray-400" />;
+    default:
+      return null;
+  }
+}
+
 export function ScrapeModal({ open, onOpenChange }: ScrapeModalProps) {
-  const [selectedPlatform, setSelectedPlatform] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const { toast } = useToast();
+  const [selectedScraper, setSelectedScraper] = useState<string | null>(null);
+  const [isRunning, setIsRunning] = useState(false);
 
-  const handleScrape = async () => {
-    if (!selectedPlatform) return;
-
-    setIsLoading(true);
+  const handleRunScraper = async (scraperId: string) => {
+    setSelectedScraper(scraperId);
+    setIsRunning(true);
+    
     try {
-      const response = await axios.post("http://localhost:8000/api/scraper/run", {
-        platform: selectedPlatform,
+      // Call the backend API to start scraping
+      const response = await fetch("/api/scraper/start", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ scraper: scraperId }),
       });
 
-      toast({
-        title: "Scraping Started",
-        description: response.data.message || `${selectedPlatform} scraper has been launched.`,
-      });
-
-      // Close modal after success
-      onOpenChange(false);
-      setSelectedPlatform(null);
-    } catch (error: any) {
-      const message = error.response?.data?.detail || "Failed to start scraper. Is the backend running?";
-      toast({
-        title: "Error",
-        description: message,
-        variant: "destructive",
-      });
-    } finally {
-      setIsLoading(false);
+      if (response.ok) {
+        const data = await response.json();
+        console.log("Scraper started:", data);
+        
+        // Close modal after a short delay
+        setTimeout(() => {
+          setIsRunning(false);
+          onOpenChange(false);
+          setSelectedScraper(null);
+        }, 1500);
+      } else {
+        console.error("Failed to start scraper");
+        setIsRunning(false);
+      }
+    } catch (error) {
+      console.error("Error starting scraper:", error);
+      setIsRunning(false);
     }
   };
 
   return (
-    <Dialog open={open} onOpenChange={(v) => {
-      if (!isLoading) {
-        onOpenChange(v);
-        if (!v) setSelectedPlatform(null);
-      }
-    }}>
-      <DialogContent className="sm:max-w-[600px] flex flex-col max-h-[90vh]">
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle className="text-xl font-display font-bold">Scrape Data</DialogTitle>
-          <DialogDescription className="text-sm text-muted-foreground">
-            Select a platform to start scraping content from.
+          <DialogTitle>Start Web Scraping</DialogTitle>
+          <DialogDescription>
+            Select a platform to scrape content from. Scraped data will be automatically analyzed and stored in the database.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 py-4 overflow-y-auto pr-2 flex-1">
-          {PLATFORMS.map((platform) => (
-            <button
-              key={platform.id}
-              onClick={() => setSelectedPlatform(platform.id)}
-              disabled={isLoading}
-              className={cn(
-                "flex items-center gap-4 p-4 rounded-xl border-2 transition-all duration-200 text-left",
-                "hover:shadow-md hover:scale-[1.01] active:scale-[0.99]",
-                selectedPlatform === platform.id
-                  ? platform.activeColor + " shadow-md ring-1 ring-primary/20"
-                  : platform.color + " bg-card hover:bg-accent/30"
-              )}
-              data-testid={`platform-${platform.id}`}
-            >
-              {platform.icon}
-              <div className="flex-1 min-w-0">
-                <p className="font-semibold text-sm text-foreground">{platform.name}</p>
-                <p className="text-xs text-muted-foreground mt-0.5">{platform.description}</p>
-              </div>
-              <div
-                className={cn(
-                  "h-5 w-5 rounded-full border-2 flex items-center justify-center transition-colors flex-shrink-0",
-                  selectedPlatform === platform.id
-                    ? "border-primary bg-primary"
-                    : "border-muted-foreground/30"
-                )}
+        <div className="space-y-4 max-h-96 overflow-y-auto pr-4">
+          {scrapers.map((scraper) => {
+            const Icon = scraper.icon;
+            const isDisabled = scraper.status !== "ready" || isRunning;
+            const isSelected = selectedScraper === scraper.id && isRunning;
+
+            return (
+              <Card
+                key={scraper.id}
+                className={`cursor-pointer transition-all ${
+                  isDisabled ? "opacity-60 cursor-not-allowed" : "hover:border-primary/50 hover:shadow-md"
+                } ${isSelected ? "border-primary bg-primary/5" : ""}`}
+                onClick={() => !isDisabled && handleRunScraper(scraper.id)}
               >
-                {selectedPlatform === platform.id && (
-                  <div className="h-2 w-2 rounded-full bg-white" />
-                )}
-              </div>
-            </button>
-          ))}
+                <CardContent className="p-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="flex items-start gap-4 flex-1">
+                      <div className="p-2.5 bg-secondary rounded-lg mt-0.5">
+                        <Icon className="h-5 w-5 text-secondary-foreground" />
+                      </div>
+                      <div className="flex-1">
+                        <h3 className="font-semibold text-foreground flex items-center gap-2">
+                          {scraper.name}
+                          <Badge variant="outline" className={getStatusColor(scraper.status)}>
+                            <span className="flex items-center gap-1.5">
+                              {getStatusIcon(scraper.status)}
+                              {scraper.status === "ready" && "Ready"}
+                              {scraper.status === "running" && "Running"}
+                              {scraper.status === "coming-soon" && "Coming Soon"}
+                            </span>
+                          </Badge>
+                        </h3>
+                        <p className="text-sm text-muted-foreground mt-1">{scraper.description}</p>
+                        <p className="text-xs text-muted-foreground mt-2 font-mono bg-muted/50 px-2 py-1 rounded w-fit">
+                          {scraper.command}
+                        </p>
+                      </div>
+                    </div>
+                    <Button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRunScraper(scraper.id);
+                      }}
+                      disabled={isDisabled}
+                      variant={isSelected ? "default" : "outline"}
+                      size="sm"
+                      className="flex-shrink-0"
+                    >
+                      {isSelected ? "Starting..." : "Run"}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
         </div>
 
-        <div className="flex justify-end gap-3 pt-2">
+        <div className="bg-blue-50 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
+          <div className="flex gap-2">
+            <AlertCircle className="h-4 w-4 text-blue-600 dark:text-blue-400 flex-shrink-0 mt-0.5" />
+            <div className="text-xs text-blue-800 dark:text-blue-200">
+              <strong>Tip:</strong> Scrapers run in the background. You can close this dialog and monitor progress in the Activity section.
+            </div>
+          </div>
+        </div>
+
+        <div className="flex justify-end gap-2 pt-2">
           <Button
             variant="outline"
             onClick={() => {
               onOpenChange(false);
-              setSelectedPlatform(null);
+              setSelectedScraper(null);
+              setIsRunning(false);
             }}
-            disabled={isLoading}
+            disabled={isRunning}
           >
-            Cancel
-          </Button>
-          <Button
-            onClick={handleScrape}
-            disabled={!selectedPlatform || isLoading}
-            className="min-w-[140px] font-semibold shadow-md"
-            data-testid="button-start-scraping"
-          >
-            {isLoading ? (
-              <>
-                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                Starting...
-              </>
-            ) : (
-              "Start Scraping"
-            )}
+            Close
           </Button>
         </div>
       </DialogContent>

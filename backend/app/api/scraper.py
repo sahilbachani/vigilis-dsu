@@ -118,7 +118,7 @@ def get_available_platforms():
     
     website_sources = [
         {"id": "website-dawn", "name": "Dawn News"},
-        {"id": "website-toi", "name": "Times of India"},
+        {"id": "website-bellingcat", "name": "Bellingcat"},
         {"id": "website-jihadintel", "name": "Jihad Intel"},
         {"id": "website-khorasandiary", "name": "The Khorasan Diary"}
     ]
@@ -132,3 +132,12 @@ def get_available_platforms():
         })
         
     return platforms
+
+
+@router.post("/start", response_model=ScrapeResponse)
+def start_scraper(request: ScrapeRequest):
+    """
+    Alias for /run endpoint - triggers a scraper by platform name.
+    This endpoint is used by the frontend modal.
+    """
+    return run_scraper(request)

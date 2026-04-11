@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Search, Filter, RefreshCw, MoreVertical, Trash2, CheckCircle2, Globe } from "lucide-react";
+import { Search, Filter, RefreshCw, MoreVertical, Trash2, CheckCircle2, Globe, Download, FileText } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   DropdownMenu,
@@ -52,11 +52,32 @@ export default function FlaggedPosts() {
   const [deleteTarget, setDeleteTarget] = useState<"selected" | "all" | "single" | null>(null);
   const [postToDelete, setPostToDelete] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const { toast } = useToast();
 
  const { data, isLoading, refetch } = useScrapedPosts();
 
 const posts: FlaggedContent[] | undefined = data;
+
+  const handleRefresh = async () => {
+    setIsRefreshing(true);
+    try {
+      await refetch();
+      toast({
+        title: "Refreshed",
+        description: "Flagged posts data has been refreshed.",
+      });
+    } catch (error) {
+      console.error("Failed to refresh:", error);
+      toast({
+        title: "Error",
+        description: "Failed to refresh data. Please try again.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
 
   const filteredPosts = posts?.filter((post) => {
     const matchesPlatform = 
@@ -99,8 +120,70 @@ const posts: FlaggedContent[] | undefined = data;
     }
   };
 
-  const handleMarkAsReviewedSelected = () => {
-    setSelectedIds(new Set());
+  const handleMarkAsReviewedSelected = async () => {
+    try {
+      const idsArray = Array.from(selectedIds);
+      
+      if (idsArray.length === 0) return;
+
+      // Mark each post as reviewed
+      await Promise.all(
+        idsArray.map(id =>
+          axios.patch(`http://localhost:8000/api/post/${id}/mark-reviewed`)
+        )
+      );
+
+      toast({
+        title: "Marked as Reviewed",
+        description: `Successfully marked ${idsArray.length} post(s) as reviewed.`,
+      });
+
+      // Refresh data and clear selection
+      await refetch();
+      setSelectedIds(new Set());
+    } catch (error) {
+      console.error("Failed to mark as reviewed:", error);
+      toast({
+        title: "Error",
+        description: "Failed to mark posts as reviewed. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleExport = async (format: 'csv' | 'pdf') => {
+    try {
+      const response = await axios.get(
+        'http://localhost:8000/api/post/export',
+        { 
+          params: { 
+            format
+          },
+          responseType: 'blob'
+        }
+      );
+      
+      const url = window.URL.createObjectURL(response.data);
+      const link = document.createElement('a');
+      link.href = url;
+      link.download = `flagged_posts_export.${format}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(url);
+
+      toast({
+        title: "Export Successful",
+        description: `Flagged posts exported as ${format.toUpperCase()}.`,
+      });
+    } catch (error) {
+      console.error("Export failed:", error);
+      toast({
+        title: "Export Failed",
+        description: `Failed to export as ${format.toUpperCase()}. Please try again.`,
+        variant: "destructive",
+      });
+    }
   };
 
   const handleDeleteSelected = () => {
@@ -168,7 +251,7 @@ const posts: FlaggedContent[] | undefined = data;
       case 'tiktok':
         return <span className="inline-flex items-center justify-center h-4 w-4 bg-black text-white rounded-sm text-xs font-bold mr-1.5">t</span>;
       case 'Dawn News':
-      case 'Times of India':
+      case 'Bellingcat':
       case 'Jihad Intel':
       case 'The Khorasan Diary':
       case 'Website / Blog':
@@ -187,10 +270,33 @@ const posts: FlaggedContent[] | undefined = data;
           <p className="text-sm text-muted-foreground mt-2 font-medium">Review and moderate text-based content from social platforms.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap md:flex-nowrap">
-          <Button variant="outline" size="sm" onClick={() => refetch()} className="text-xs font-medium border-border/30">
-            <RefreshCw className="h-4 w-4 mr-2" /> Refresh
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={handleRefresh} 
+            disabled={isRefreshing || isLoading}
+            className="text-xs font-medium border-border/30">
+            <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? 'animate-spin' : ''}`} /> 
+            {isRefreshing ? 'Refreshing...' : 'Refresh'}
           </Button>
-          <Button size="sm" className="text-xs font-semibold bg-primary hover:bg-primary/90 shadow-md">Export Report</Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" className="text-xs font-semibold bg-primary hover:bg-primary/90 shadow-md">
+                <Download className="h-4 w-4 mr-2" />
+                Export Report
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end">
+              <DropdownMenuItem onClick={() => handleExport('csv')}>
+                <FileText className="h-4 w-4 mr-2" />
+                Export as CSV
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => handleExport('pdf')}>
+                <FileText className="h-4 w-4 mr-2" />
+                Export as PDF
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </div>
 
@@ -216,7 +322,7 @@ const posts: FlaggedContent[] | undefined = data;
               <SelectItem value="Twitter/X">Twitter (X)</SelectItem>
               <SelectItem value="Facebook">Facebook</SelectItem>
               <SelectItem value="Dawn News">Dawn</SelectItem>
-              <SelectItem value="Times of India">Times of India</SelectItem>
+              <SelectItem value="Bellingcat">Bellingcat</SelectItem>
               <SelectItem value="Jihad Intel">Jihad Intel</SelectItem>
               <SelectItem value="The Khorasan Diary">Khorasan Diary</SelectItem>
               <SelectItem value="TikTok">TikTok</SelectItem>

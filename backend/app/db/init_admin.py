@@ -11,7 +11,7 @@ def create_admin():
             admin = User(
                 username="admin",
                 email="admin@example.com",
-                password_hash=hash_password("admin"),  # Will truncate automatically
+                password_hash=hash_password("admin123"),  # Will truncate automatically
                 role="admin"
             )
             db.add(admin)

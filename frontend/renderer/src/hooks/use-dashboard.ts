@@ -7,7 +7,7 @@ export function useDashboardStats() {
   return useQuery({
     queryKey: ["dashboardStats"],
     queryFn: async () => {
-      const res = await axios.get("http://localhost:8000/dashboard/stats");
+      const res = await axios.get("http://localhost:8000/api/dashboard/stats");
       return res.data;
     },
   });
@@ -18,7 +18,7 @@ export function useSystemStatus() {
   return useQuery({
     queryKey: ["systemStatus"],
     queryFn: async () => {
-      const res = await axios.get("http://localhost:8000/dashboard/status");
+      const res = await axios.get("http://localhost:8000/api/dashboard/status");
       return res.data;
     },
     refetchInterval: 5000, // Poll every 5 seconds

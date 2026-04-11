@@ -12,7 +12,7 @@ from video_downloader import download_video
 load_dotenv()
 
 # --- CONFIGURATION ---
-HEADLESS_MODE = os.getenv("HEADLESS", "false").lower() == "true"
+HEADLESS_MODE = False  # Always show browser window for debugging
 USER_DATA_DIR = "./user_data"
 TARGET_URL = "https://www.facebook.com/"
 
@@ -51,10 +51,9 @@ def save_posts_to_db(posts):
                     author=p["author"],
                     text_content=p["content"],
                     timestamp=p["timestamp"],
-                    url=p.get("url"),  # Now saves the actual extracted URL
+                    url=p.get("url"),
                     confidence_score=None,
-                    category="facebook",
-                    media_items=p.get("media_items", [])
+                    category="facebook"
                 )
                 if post_id:
                     saved_count += 1

@@ -63,13 +63,6 @@ export default function Settings() {
             </div>
             <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 rounded-md border border-border/30 bg-background/40 hover:bg-background/50 transition-colors">
               <div className="space-y-1">
-                <Label className="text-base font-semibold text-foreground">Email Alerts</Label>
-                <p className="text-sm text-muted-foreground">Receive daily summary reports via email.</p>
-              </div>
-              <Switch className="flex-shrink-0" />
-            </div>
-            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 p-4 rounded-md border border-border/30 bg-background/40 hover:bg-background/50 transition-colors">
-              <div className="space-y-1">
                 <Label className="text-base font-semibold text-foreground">System Sound Alerts</Label>
                 <p className="text-sm text-muted-foreground">Play a sound when critical threats are detected.</p>
               </div>

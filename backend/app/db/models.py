@@ -10,6 +10,19 @@ class Source(Base):
     source_name = Column(String)
     url = Column(String)
     added_date = Column(DateTime, default=datetime.utcnow)
+    
+    # CSS Selectors for generic website scraping
+    post_selector = Column(String, nullable=True)  # Container for each post
+    content_selector = Column(String, nullable=True)  # Post content/text
+    title_selector = Column(String, nullable=True)  # Post title
+    author_selector = Column(String, nullable=True)  # Author name
+    date_selector = Column(String, nullable=True)  # Publish date
+    link_selector = Column(String, nullable=True)  # Post URL
+    image_selector = Column(String, nullable=True)  # Image/thumbnail URL
+    selectors_validated = Column(Boolean, default=False)  # Whether selectors have been tested
+    
+    # Relationship to posts
+    posts = relationship("Post", back_populates="source")
 
 class Post(Base):
     __tablename__ = "posts"
@@ -19,22 +32,23 @@ class Post(Base):
     timestamp = Column(DateTime)
     text_content = Column(Text)
     url = Column(String)
-    confidence_score = Column(Float)
+    confidence_score = Column(Float, default=0.0)
     flagged = Column(Boolean, default=False)
     category = Column(String)
-
-    media = relationship("PostMedia", back_populates="post", cascade="all, delete-orphan")
-
-class PostMedia(Base):
-    __tablename__ = "post_media"
-    media_id = Column(Integer, primary_key=True)
-    post_id = Column(Integer, ForeignKey("posts.post_id", ondelete="CASCADE"))
-    media_type = Column(String)
-    media_url = Column(String)
-    local_path = Column(String)
-    added_date = Column(DateTime, default=datetime.utcnow)
-
-    post = relationship("Post", back_populates="media")
+    
+    # Relationship to source
+    source = relationship("Source", back_populates="posts")
+    
+    # AI Analysis Scores
+    hate_score = Column(Float, default=0.0)
+    extremism_score = Column(Float, default=0.0)
+    misinformation_score = Column(Float, default=0.0)
+    emotion_anger = Column(Float, default=0.0)
+    emotion_fear = Column(Float, default=0.0)
+    emotion_disgust = Column(Float, default=0.0)
+    emotion_neutral = Column(Float, default=1.0)
+    ai_processed = Column(Boolean, default=False)
+    analysis_timestamp = Column(DateTime, nullable=True)
 
 class Video(Base):
     __tablename__ = "videos"

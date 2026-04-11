@@ -1,14 +1,11 @@
 # app/db/session.py
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
-from dotenv import load_dotenv
 import os
-
-load_dotenv()  # Load .env file
 
 DATABASE_URL = os.getenv(
     "DATABASE_URL",
-    "postgresql://postgres:yourpass@localhost:5432/vigilis_db"
+    "postgresql://postgres:CHERRY718hf@localhost:5432/vigilis_db"
 )
 
 engine = create_engine(DATABASE_URL)

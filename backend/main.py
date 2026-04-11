@@ -1,13 +1,13 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.api import auth, posts, videos
+from app.api import auth, post, video
 
 app = FastAPI(title="Vigilis Backend")
 
 # Include Routers
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
-app.include_router(posts.router, prefix="/api/posts", tags=["posts"])
-app.include_router(videos.router, prefix="/api/videos", tags=["videos"])
+app.include_router(post.router, prefix="/api/post", tags=["post"])
+app.include_router(video.router, prefix="/api/video", tags=["video"])
 
 # Allow CORS (so frontend can call backend)
 origins = [

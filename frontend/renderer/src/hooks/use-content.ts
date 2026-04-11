@@ -36,7 +36,7 @@ export function useScrapedPosts() {
     queryKey: ["posts", "scraped"],
     queryFn: async () => {
       const response = await axios.get("http://localhost:8000/api/post/scraped", {
-        params: { limit: 50 }
+        params: { limit: 256 }
       });
       return response.data.map((post: any) => {
         let platformName = "Twitter/X";
@@ -46,15 +46,17 @@ export function useScrapedPosts() {
           platformName = "TikTok";
         } else if (post.category === "website") {
           if (!post.url) platformName = "Website / Blog";
-          else if (post.url.includes("dawn.com")) platformName = "Dawn News";
-          else if (post.url.includes("timesofindia")) platformName = "Times of India";
           else if (post.url.includes("jihadintel")) platformName = "Jihad Intel";
+          else if (post.url.includes("dawn.com")) platformName = "Dawn News";
+          else if (post.url.includes("bellingcat")) platformName = "Bellingcat";
           else if (post.url.includes("thekhorasandiary")) platformName = "The Khorasan Diary";
           else platformName = "Website / Blog";
         }
 
         return {
           id: post.post_id,
+          post_id: post.post_id,
+          source_id: post.source_id,  // ✅ IMPORTANT: Include source_id for grouping by source
           platform: platformName,
           category: post.category || "social-media",
           title: post.author || "Unknown",
@@ -62,6 +64,7 @@ export function useScrapedPosts() {
           confidenceScore: post.confidence_score || 0,
           status: post.flagged ? "Flagged" : "Safe",
           timestamp: post.timestamp,
+          added_date: post.timestamp,  // ✅ For last sync calculation
           url: post.url,
           media: post.media || [],
           type: "post"
@@ -77,6 +80,10 @@ export function useSources() {
     queryKey: ["sources"],
     queryFn: async () => {
       try {
+        // Fetch custom website sources from database
+        const customSourcesResponse = await axios.get("http://localhost:8000/api/sources").catch(() => ({ data: [] }));
+        const customSources = customSourcesResponse.data || [];
+
         // Twitter Stats
         const twitterCountResponse = await axios.get("http://localhost:8000/api/post", {
           params: { category: "twitter", limit: 100 }
@@ -101,7 +108,8 @@ export function useSources() {
         }).catch(() => ({ data: [] }));
         const tiktokCount = tiktokCountResponse.data.length;
 
-        const sources: Source[] = [
+        // System sources (built-in scrapers)
+        const sources: any[] = [
           {
             id: 1,
             name: "Twitter (X) Scraper",
@@ -136,7 +144,23 @@ export function useSources() {
           }
         ];
 
-        return sources;
+        // Add custom website sources with proper formatting
+        const customWebsiteSources = customSources
+          .filter((source: any) => source.platform?.toLowerCase() === "website")
+          .map((source: any) => ({
+            id: source.source_id,
+            source_id: source.source_id,
+            name: source.source_name,
+            source_name: source.source_name,
+            url: source.url,
+            platform: "website",
+            type: "Web Scraper",
+            status: "Active",
+            lastSync: new Date().toLocaleTimeString(),
+            added_date: source.added_date
+          }));
+
+        return [...sources, ...customWebsiteSources];
       } catch (error) {
         return [
           {
